@@ -1,0 +1,121 @@
+import flet as ft
+
+registered_emails = []
+
+def main(page: ft.Page):
+    page.title = "POS System"
+    page.vertical_alignment = ft.MainAxisAlignment.CENTER
+    page.horizontal_alignment = ft.MainAxisAlignment.CENTER
+    page.theme_mode = ft.ThemeMode.LIGHT
+    page.bgcolor = ft.Colors.BLUE_GREY_50
+
+    def create_card(content_list):
+        return ft.Container(
+            content=ft.Column(content_list, horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=10),
+            padding=30,
+            border=ft.border.all(1, ft.Colors.BLUE_GREY_200),
+            border_radius=10,
+            bgcolor=ft.Colors.WHITE,
+            shadow=ft.BoxShadow(blur_radius=10, color=ft.Colors.BLUE_GREY_100),
+            width=400,
+        )
+
+
+    def view_main(_):
+        page.clean()
+        page.add(
+            ft.Text("Hello bitch", size=40, weight=ft.FontWeight.BOLD, color=ft.Colors.BLUE_GREY)
+        )
+        page.update()
+
+
+    def view_login(_):
+        page.clean()
+        email_field = ft.TextField(label="Email", width=300)
+        password_field = ft.TextField(label="Password", password=True, can_reveal_password=True, width=300)
+        error_text = ft.Text("", color=ft.Colors.RED, weight=ft.FontWeight.BOLD)
+
+        def handle_login(_):
+            if email_field.value in registered_emails:
+                view_main(None)
+            else:
+                error_text.value = "Invalid email or password!"
+                page.update()
+
+        page.add(
+            create_card([
+                ft.Text("POS LOGIN", size=30, weight=ft.FontWeight.BOLD),
+                email_field,
+                password_field,
+                error_text,
+                ft.ElevatedButton("LOG IN", on_click=handle_login, width=300),
+                ft.TextButton("Forgot Password?", on_click=view_forgot_password),
+                ft.TextButton("Don't have an account? Register", on_click=view_register)
+            ])
+        )
+        page.update()
+
+    def view_register(_):
+        page.clean()
+        email_field = ft.TextField(label="Email", width=300)
+        password_field = ft.TextField(label="Password", password=True, can_reveal_password=True, width=300)
+        status_text = ft.Text("", weight=ft.FontWeight.BOLD)
+
+        def handle_register(_):
+            if email_field.value == "":
+                status_text.value = "Please enter an email."
+                status_text.color = ft.Colors.RED
+            elif email_field.value in registered_emails:
+                status_text.value = "This account has been registered!"
+                status_text.color = ft.Colors.RED
+            else:
+                registered_emails.append(email_field.value)
+                status_text.value = "You have been registered!"
+                status_text.color = ft.Colors.GREEN
+            page.update()
+
+        page.add(
+            create_card([
+                ft.Text("CREATE ACCOUNT", size=25, weight=ft.FontWeight.BOLD),
+                email_field,
+                password_field,
+                status_text,
+                ft.ElevatedButton("REGISTER", on_click=handle_register, width=300),
+                ft.TextButton("Back to Login", on_click=view_login)
+            ])
+        )
+        page.update()
+
+    def view_forgot_password(_):
+        page.clean()
+        new_pass_field = ft.TextField(label="New Password", password=True, can_reveal_password=True, width=300)
+        confirm_pass_field = ft.TextField(label="Confirm Password", password=True, can_reveal_password=True, width=300)
+        status_text = ft.Text(size=14)
+
+        def handle_reset(_):
+            if new_pass_field.value == confirm_pass_field.value and new_pass_field.value != "":
+                status_text.value = "Password updated successfully!"
+                status_text.color = ft.Colors.GREEN
+            else:
+                status_text.value = "Passwords do not match."
+                status_text.color = ft.Colors.RED
+            page.update()
+
+        page.add(
+            create_card([
+                ft.Text("RESET PASSWORD", size=25, weight=ft.FontWeight.BOLD),
+                ft.TextField(label="Enter your registered email", width=300),
+                new_pass_field,
+                confirm_pass_field,
+                ft.ElevatedButton("UPDATE PASSWORD", on_click=handle_reset, width=300),
+                status_text,
+                ft.TextButton("Back to Login", on_click=view_login)
+            ])
+        )
+        page.update()
+
+
+    view_login(None)
+
+if __name__ == "__main__":
+    ft.app(target=main)
