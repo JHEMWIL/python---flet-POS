@@ -1,0 +1,226 @@
+import flet as ft
+
+# Global Data Stores (Simulating a Database)
+registered_users = {}  # {email: password}
+inventory = []  # List of dicts: {"name": str, "price": float, "stock": int}
+sales_history = []  # List of dicts: {"name": str, "total": float, "quantity": int}
+
+
+def main(page: ft.Page):
+    page.title = "Advanced POS System"
+    page.theme_mode = ft.ThemeMode.LIGHT
+    page.bgcolor = ft.Colors.BLUE_GREY_50
+    page.window_width = 1100
+    page.window_height = 800
+
+    def create_card(content_list, width=400):
+        return ft.Container(
+            content=ft.Column(content_list, horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=10),
+            padding=30,
+            border=ft.border.all(1, ft.Colors.BLUE_GREY_200),
+            border_radius=10,
+            bgcolor=ft.Colors.WHITE,
+            shadow=ft.BoxShadow(blur_radius=10, color=ft.Colors.BLUE_GREY_100),
+            width=width,
+        )
+
+    # --- MAIN SYSTEM VIEW ---
+    def view_main(_):
+        page.clean()
+        page.horizontal_alignment = ft.CrossAxisAlignment.START
+        page.vertical_alignment = ft.MainAxisAlignment.START
+
+        content_area = ft.Column(expand=True, scroll=ft.ScrollMode.ADAPTIVE)
+
+        # --- Sub-View: Dashboard ---
+        def show_dashboard():
+            total_revenue = sum(sale['total'] for sale in sales_history)
+            total_items = sum(item['stock'] for item in inventory)
+
+            content_area.controls = [
+                ft.Text("Dashboard", size=30),
+                ft.Row([
+                    ft.Container(
+                        content=ft.Column([ft.Text("Total Revenue", color="white"),
+                                           ft.Text(f"${total_revenue:.2f}", size=25, color="white")]),
+                        bgcolor=ft.Colors.GREEN_700, padding=20, border_radius=10, expand=True
+                    ),
+                    ft.Container(
+                        content=ft.Column([ft.Text("Items in Stock", color="white"),
+                                           ft.Text(f"{total_items}", size=25, color="white")]),
+                        bgcolor=ft.Colors.BLUE_700, padding=20, border_radius=10, expand=True
+                    ),
+                ], spacing=20),
+                ft.Text("Recent Sales History", size=20),
+                ft.DataTable(
+                    columns=[ft.DataColumn(ft.Text("Product")), ft.DataColumn(ft.Text("Qty")),
+                             ft.DataColumn(ft.Text("Total"))],
+                    rows=[ft.DataRow(cells=[ft.DataCell(ft.Text(s['name'])), ft.DataCell(ft.Text(str(s['quantity']))),
+                                            ft.DataCell(ft.Text(f"${s['total']:.2f}"))]) for s in sales_history[::-1]]
+                )
+            ]
+            page.update()
+
+
+        def show_inventory():
+            name_input = ft.TextField(label="Product Name", width=200)
+            price_input = ft.TextField(label="Price", width=100, keyboard_type=ft.KeyboardType.NUMBER)
+            stock_input = ft.TextField(label="Stock", width=100, keyboard_type=ft.KeyboardType.NUMBER)
+
+            def add_item(_):
+                if name_input.value and price_input.value and stock_input.value:
+                    inventory.append({
+                        "name": name_input.value,
+                        "price": float(price_input.value),
+                        "stock": int(stock_input.value)
+                    })
+                    name_input.value = ""
+                    price_input.value = ""
+                    stock_input.value = ""
+                    show_inventory()  # Refresh list
+
+            inventory_rows = [
+                ft.DataRow(cells=[
+                    ft.DataCell(ft.Text(i['name'])),
+                    ft.DataCell(ft.Text(f"${i['price']:.2f}")),
+                    ft.DataCell(ft.Text(str(i['stock'])))
+                ]) for i in inventory
+            ]
+
+            content_area.controls = [
+                ft.Text("Inventory Management", size=30),
+                ft.Row([name_input, price_input, stock_input,
+                        ft.ElevatedButton("Add Product", on_click=add_item, icon=ft.Icons.ADD)]),
+                ft.DataTable(
+                    columns=[ft.DataColumn(ft.Text("Name")), ft.DataColumn(ft.Text("Price")),
+                             ft.DataColumn(ft.Text("Stock"))],
+                    rows=inventory_rows
+                )
+            ]
+            page.update()
+
+        # --- Sub-View: Sales ---
+        def show_sales():
+            product_dropdown = ft.Dropdown(
+                label="Select Product",
+                options=[ft.dropdown.Option(i['name']) for i in inventory if i['stock'] > 0],
+                width=300
+            )
+            qty_input = ft.TextField(label="Quantity", value="1", width=100)
+            sale_status = ft.Text()
+
+            def process_sale(_):
+                selected = product_dropdown.value
+                try:
+                    qty = int(qty_input.value)
+                    item = next(i for i in inventory if i['name'] == selected)
+
+                    if item['stock'] >= qty:
+                        item['stock'] -= qty
+                        total_price = item['price'] * qty
+                        sales_history.append({"name": selected, "quantity": qty, "total": total_price})
+                        sale_status.value = f"Sold {qty} {selected} for ${total_price:.2f}"
+                        sale_status.color = "green"
+                        show_sales()  # Refresh
+                    else:
+                        sale_status.value = "Not enough stock!"
+                        sale_status.color = "red"
+                except ValueError:
+                    sale_status.value = "Invalid Sale"
+                page.update()
+
+            content_area.controls = [
+                ft.Text("Make a Sale", size=30, ),
+                product_dropdown,
+                qty_input,
+                ft.ElevatedButton("Complete Sale", on_click=process_sale, icon=ft.Icons.SHOPPING_CART),
+                sale_status
+            ]
+            page.update()
+
+        def nav_change(e):
+            idx = e.control.selected_index
+            if idx == 0:
+                show_dashboard()
+            elif idx == 1:
+                show_inventory()
+            elif idx == 2:
+                show_sales()
+            elif idx == 3:
+                view_login(None)
+
+        sidebar = ft.NavigationRail(
+            selected_index=0,
+            destinations=[
+                ft.NavigationRailDestination(icon=ft.Icons.DASHBOARD, label="Dashboard"),
+                ft.NavigationRailDestination(icon=ft.Icons.INVENTORY, label="Inventory"),
+                ft.NavigationRailDestination(icon=ft.Icons.PAYMENTS, label="Sales"),
+                ft.NavigationRailDestination(icon=ft.Icons.LOGOUT, label="Logout"),
+            ],
+            on_change=nav_change,
+            bgcolor=ft.Colors.BLUE_GREY_900,
+            unselected_label_text_style=ft.TextStyle(color="white"),
+        )
+
+        page.add(ft.Row([sidebar, ft.VerticalDivider(width=1), content_area], expand=True))
+        show_dashboard()
+
+    # --- AUTH VIEWS ---
+    def view_login(_):
+        page.clean()
+        page.horizontal_alignment = ft.CrossAxisAlignment.CENTER
+        page.vertical_alignment = ft.MainAxisAlignment.CENTER
+
+        email = ft.TextField(label="Email", width=300)
+        password = ft.TextField(label="Password", password=True, can_reveal_password=True, width=300)
+        error = ft.Text("", color="red")
+
+        def handle_login(_):
+            if email.value in registered_users and registered_users[email.value] == password.value:
+                view_main(None)
+            else:
+                error.value = "Invalid credentials"
+                page.update()
+
+        page.add(create_card([
+            ft.Text("POS LOGIN", size=30),
+            email, password, error,
+            ft.ElevatedButton("LOG IN", on_click=handle_login, width=300),
+            ft.TextButton("Register New Account", on_click=view_register)
+        ]))
+
+    def view_register(_):
+        page.clean()
+        email = ft.TextField(label="Email", width=300)
+        p1 = ft.TextField(label="Password", password=True, width=300)
+        p2 = ft.TextField(label="Confirm Password", password=True, width=300)
+        status = ft.Text()
+
+        def handle_reg(_):
+            if not email.value or not p1.value:
+                status.value = "Fields cannot be empty"
+                status.color = "red"
+            elif email.value in registered_users:
+                status.value = "You have already registered"
+                status.color = "orange"
+            elif p1.value != p2.value:
+                status.value = "Passwords do not match"
+                status.color = "red"
+            else:
+                registered_users[email.value] = p1.value
+                status.value = "Registered successfully!"
+                status.color = "green"
+            page.update()
+
+        page.add(create_card([
+            ft.Text("REGISTER", size=30),
+            email, p1, p2, status,
+            ft.ElevatedButton("CREATE ACCOUNT", on_click=handle_reg, width=300),
+            ft.TextButton("Back to Login", on_click=view_login)
+        ]))
+
+    view_login(None)
+
+
+if __name__ == "__main__":
+    ft.app(target=main)
