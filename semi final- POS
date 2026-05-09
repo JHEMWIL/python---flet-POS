@@ -1,0 +1,863 @@
+import flet as ft
+
+# ==========================================
+# GLOBAL DATA
+# ==========================================
+
+registered_users = {}
+inventory = []
+sales_history = []
+
+
+def main(page: ft.Page):
+
+    # ==========================================
+    # PAGE SETTINGS
+    # ==========================================
+
+    page.title = "Advanced POS System"
+    page.theme_mode = ft.ThemeMode.LIGHT
+    page.bgcolor = ft.Colors.BLUE_GREY_50
+    page.window_width = 1200
+    page.window_height = 800
+    page.scroll = ft.ScrollMode.AUTO
+
+    # ==========================================
+    # CARD COMPONENT
+    # ==========================================
+
+    def create_card(content_list, width=400):
+
+        return ft.Container(
+            content=ft.Column(
+                controls=content_list,
+                spacing=15,
+                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            ),
+            width=width,
+            padding=30,
+            bgcolor=ft.Colors.WHITE,
+            border_radius=20,
+            border=ft.Border.all(
+                1,
+                ft.Colors.BLUE_GREY_100,
+            ),
+            shadow=ft.BoxShadow(
+                blur_radius=15,
+                spread_radius=1,
+                color=ft.Colors.BLUE_GREY_100,
+            ),
+        )
+
+    # ==========================================
+    # MAIN POS VIEW
+    # ==========================================
+
+    def view_main(_):
+
+        page.clean()
+
+        content_area = ft.Column(
+            expand=True,
+            scroll=ft.ScrollMode.AUTO,
+        )
+
+        # ==========================================
+        # DASHBOARD
+        # ==========================================
+
+        def show_dashboard():
+
+            total_revenue = sum(
+                sale["total"]
+                for sale in sales_history
+            )
+
+            total_products = len(inventory)
+
+            total_stock = sum(
+                item["stock"]
+                for item in inventory
+            )
+
+            sales_rows = []
+
+            for sale in sales_history[::-1]:
+
+                sales_rows.append(
+                    ft.DataRow(
+                        cells=[
+                            ft.DataCell(
+                                ft.Text(sale["name"])
+                            ),
+                            ft.DataCell(
+                                ft.Text(
+                                    str(sale["quantity"])
+                                )
+                            ),
+                            ft.DataCell(
+                                ft.Text(
+                                    f"${sale['total']:.2f}"
+                                )
+                            ),
+                        ]
+                    )
+                )
+
+            content_area.controls = [
+
+                ft.Text(
+                    "Dashboard",
+                    size=30,
+                    weight=ft.FontWeight.BOLD,
+                ),
+
+                ft.Row(
+                    controls=[
+
+                        ft.Container(
+                            expand=True,
+                            padding=20,
+                            bgcolor=ft.Colors.GREEN_700,
+                            border_radius=15,
+                            content=ft.Column(
+                                controls=[
+                                    ft.Text(
+                                        "Revenue",
+                                        color="white",
+                                    ),
+                                    ft.Text(
+                                        f"${total_revenue:.2f}",
+                                        size=28,
+                                        color="white",
+                                        weight=ft.FontWeight.BOLD,
+                                    ),
+                                ]
+                            ),
+                        ),
+
+                        ft.Container(
+                            expand=True,
+                            padding=20,
+                            bgcolor=ft.Colors.BLUE_700,
+                            border_radius=15,
+                            content=ft.Column(
+                                controls=[
+                                    ft.Text(
+                                        "Products",
+                                        color="white",
+                                    ),
+                                    ft.Text(
+                                        str(total_products),
+                                        size=28,
+                                        color="white",
+                                        weight=ft.FontWeight.BOLD,
+                                    ),
+                                ]
+                            ),
+                        ),
+
+                        ft.Container(
+                            expand=True,
+                            padding=20,
+                            bgcolor=ft.Colors.ORANGE_700,
+                            border_radius=15,
+                            content=ft.Column(
+                                controls=[
+                                    ft.Text(
+                                        "Stock",
+                                        color="white",
+                                    ),
+                                    ft.Text(
+                                        str(total_stock),
+                                        size=28,
+                                        color="white",
+                                        weight=ft.FontWeight.BOLD,
+                                    ),
+                                ]
+                            ),
+                        ),
+                    ]
+                ),
+
+                ft.Divider(),
+
+                ft.Text(
+                    "Recent Sales",
+                    size=22,
+                    weight=ft.FontWeight.BOLD,
+                ),
+
+                ft.DataTable(
+                    columns=[
+                        ft.DataColumn(
+                            ft.Text("Product")
+                        ),
+                        ft.DataColumn(
+                            ft.Text("Quantity")
+                        ),
+                        ft.DataColumn(
+                            ft.Text("Total")
+                        ),
+                    ],
+                    rows=sales_rows,
+                ),
+            ]
+
+            page.update()
+
+        # ==========================================
+        # INVENTORY
+        # ==========================================
+
+        def show_inventory():
+
+            selected_image = ""
+
+            name_input = ft.TextField(
+                label="Product Name",
+                width=220,
+            )
+
+            price_input = ft.TextField(
+                label="Price",
+                width=120,
+                keyboard_type=ft.KeyboardType.NUMBER,
+            )
+
+            stock_input = ft.TextField(
+                label="Stock",
+                width=120,
+                keyboard_type=ft.KeyboardType.NUMBER,
+            )
+
+            status = ft.Text()
+
+            image_preview = ft.Image(
+                src="",
+                width=120,
+                height=120,
+                fit=ft.BoxFit.COVER,
+                border_radius=10,
+            )
+
+            # ==========================================
+            # FILE PICKER
+            # ==========================================
+
+            async def pick_files(_):
+
+                nonlocal selected_image
+
+                files = await page.pick_files_async(
+                    allow_multiple=False,
+                    allowed_extensions=[
+                        "png",
+                        "jpg",
+                        "jpeg",
+                    ],
+                )
+
+                if files:
+
+                    selected_image = files[0].path
+
+                    image_preview.src = selected_image
+
+                    page.update()
+
+            # ==========================================
+            # ADD PRODUCT
+            # ==========================================
+
+            def add_product(_):
+
+                try:
+
+                    if (
+                        not name_input.value
+                        or not price_input.value
+                        or not stock_input.value
+                    ):
+
+                        status.value = "Fill all fields"
+                        status.color = "red"
+
+                    else:
+
+                        inventory.append(
+                            {
+                                "name": name_input.value,
+                                "price": float(
+                                    price_input.value
+                                ),
+                                "stock": int(
+                                    stock_input.value
+                                ),
+                                "image": selected_image,
+                            }
+                        )
+
+                        status.value = (
+                            "Product added successfully"
+                        )
+
+                        status.color = "green"
+
+                        show_inventory()
+
+                except ValueError:
+
+                    status.value = "Invalid values"
+                    status.color = "red"
+
+                page.update()
+
+            # ==========================================
+            # INVENTORY TABLE
+            # ==========================================
+
+            rows = []
+
+            for item in inventory:
+
+                rows.append(
+                    ft.DataRow(
+                        cells=[
+
+                            ft.DataCell(
+                                ft.Image(
+                                    src=item["image"],
+                                    width=50,
+                                    height=50,
+                                    fit=ft.ImageFit.COVER,
+                                    border_radius=5,
+                                )
+                            ),
+
+                            ft.DataCell(
+                                ft.Text(item["name"])
+                            ),
+
+                            ft.DataCell(
+                                ft.Text(
+                                    f"${item['price']:.2f}"
+                                )
+                            ),
+
+                            ft.DataCell(
+                                ft.Text(
+                                    str(item["stock"])
+                                )
+                            ),
+                        ]
+                    )
+                )
+
+            content_area.controls = [
+
+                ft.Text(
+                    "Inventory Management",
+                    size=30,
+                    weight=ft.FontWeight.BOLD,
+                ),
+
+                ft.Row(
+                    controls=[
+                        name_input,
+                        price_input,
+                        stock_input,
+                    ]
+                ),
+
+                image_preview,
+
+                ft.Row(
+                    controls=[
+
+                        ft.ElevatedButton(
+                            "Choose Image",
+                            icon=ft.Icons.IMAGE,
+                            on_click=pick_files,
+                        ),
+
+                        ft.ElevatedButton(
+                            "Add Product",
+                            icon=ft.Icons.ADD,
+                            on_click=add_product,
+                        ),
+                    ]
+                ),
+
+                status,
+
+                ft.Divider(),
+
+                ft.DataTable(
+                    columns=[
+                        ft.DataColumn(
+                            ft.Text("Image")
+                        ),
+                        ft.DataColumn(
+                            ft.Text("Name")
+                        ),
+                        ft.DataColumn(
+                            ft.Text("Price")
+                        ),
+                        ft.DataColumn(
+                            ft.Text("Stock")
+                        ),
+                    ],
+                    rows=rows,
+                ),
+            ]
+
+            page.update()
+
+        # ==========================================
+        # SALES
+        # ==========================================
+
+        def show_sales():
+
+            status = ft.Text()
+
+            product_dropdown = ft.Dropdown(
+                label="Select Product",
+                width=300,
+                options=[
+                    ft.dropdown.Option(
+                        item["name"]
+                    )
+                    for item in inventory
+                    if item["stock"] > 0
+                ],
+            )
+
+            qty_input = ft.TextField(
+                label="Quantity",
+                value="1",
+                width=120,
+                keyboard_type=ft.KeyboardType.NUMBER,
+            )
+
+            # ==========================================
+            # PROCESS SALE
+            # ==========================================
+
+            def process_sale(_):
+
+                try:
+
+                    selected = product_dropdown.value
+
+                    qty = int(qty_input.value)
+
+                    item = next(
+                        i
+                        for i in inventory
+                        if i["name"] == selected
+                    )
+
+                    if item["stock"] >= qty:
+
+                        item["stock"] -= qty
+
+                        total = (
+                            item["price"] * qty
+                        )
+
+                        sales_history.append(
+                            {
+                                "name": selected,
+                                "quantity": qty,
+                                "total": total,
+                            }
+                        )
+
+                        status.value = (
+                            f"Sold {qty} x {selected}"
+                        )
+
+                        status.color = "green"
+
+                        show_sales()
+
+                    else:
+
+                        status.value = (
+                            "Not enough stock"
+                        )
+
+                        status.color = "red"
+
+                except:
+
+                    status.value = "Invalid sale"
+                    status.color = "red"
+
+                page.update()
+
+            # ==========================================
+            # PRODUCT CARDS
+            # ==========================================
+
+            product_cards = []
+
+            for item in inventory:
+
+                product_cards.append(
+
+                    ft.Container(
+                        width=180,
+                        padding=10,
+                        bgcolor="white",
+                        border_radius=15,
+                        border=ft.Border.all(
+                            1,
+                            ft.Colors.BLUE_GREY_100,
+                        ),
+
+                        content=ft.Column(
+                            controls=[
+
+                                ft.Image(
+                                    src=item["image"],
+                                    width=150,
+                                    height=120,
+                                    fit=ft.ImageFit.COVER,
+                                    border_radius=10,
+                                ),
+
+                                ft.Text(
+                                    item["name"],
+                                    weight=ft.FontWeight.BOLD,
+                                ),
+
+                                ft.Text(
+                                    f"${item['price']:.2f}"
+                                ),
+
+                                ft.Text(
+                                    f"Stock: {item['stock']}"
+                                ),
+                            ]
+                        ),
+                    )
+                )
+
+            content_area.controls = [
+
+                ft.Text(
+                    "Sales",
+                    size=30,
+                    weight=ft.FontWeight.BOLD,
+                ),
+
+                ft.Row(
+                    controls=[
+                        product_dropdown,
+                        qty_input,
+                    ]
+                ),
+
+                ft.ElevatedButton(
+                    "Complete Sale",
+                    icon=ft.Icons.SHOPPING_CART,
+                    on_click=process_sale,
+                ),
+
+                status,
+
+                ft.Divider(),
+
+                ft.Text(
+                    "Products",
+                    size=22,
+                    weight=ft.FontWeight.BOLD,
+                ),
+
+                ft.Row(
+                    controls=product_cards,
+                    wrap=True,
+                    scroll=ft.ScrollMode.AUTO,
+                ),
+            ]
+
+            page.update()
+
+        # ==========================================
+        # NAVIGATION
+        # ==========================================
+
+        def nav_change(e):
+
+            index = e.control.selected_index
+
+            if index == 0:
+                show_dashboard()
+
+            elif index == 1:
+                show_inventory()
+
+            elif index == 2:
+                show_sales()
+
+            elif index == 3:
+                view_login(None)
+
+        sidebar = ft.NavigationRail(
+
+            selected_index=0,
+            bgcolor=ft.Colors.BLUE_GREY_900,
+            label_type=ft.NavigationRailLabelType.ALL,
+            min_width=100,
+            on_change=nav_change,
+
+            destinations=[
+
+                ft.NavigationRailDestination(
+                    icon=ft.Icons.DASHBOARD,
+                    label=ft.Text(
+                        "Dashboard",
+                        color="white",
+                    ),
+                ),
+
+                ft.NavigationRailDestination(
+                    icon=ft.Icons.INVENTORY,
+                    label=ft.Text(
+                        "Inventory",
+                        color="white",
+                    ),
+                ),
+
+                ft.NavigationRailDestination(
+                    icon=ft.Icons.PAYMENTS,
+                    label=ft.Text(
+                        "Sales",
+                        color="white",
+                    ),
+                ),
+
+                ft.NavigationRailDestination(
+                    icon=ft.Icons.LOGOUT,
+                    label=ft.Text(
+                        "Logout",
+                        color="white",
+                    ),
+                ),
+            ],
+        )
+
+        # ==========================================
+        # LAYOUT
+        # ==========================================
+
+        page.add(
+
+            ft.Row(
+                controls=[
+
+                    ft.Container(
+                        content=sidebar,
+                        height=700,
+                    ),
+
+                    ft.VerticalDivider(width=1),
+
+                    ft.Container(
+                        content=content_area,
+                        expand=True,
+                        padding=20,
+                    ),
+                ],
+
+                expand=True,
+            )
+        )
+
+        show_dashboard()
+
+    # ==========================================
+    # LOGIN
+    # ==========================================
+
+    def view_login(_):
+
+        page.clean()
+
+        email = ft.TextField(
+            label="Email",
+            width=300,
+        )
+
+        password = ft.TextField(
+            label="Password",
+            width=300,
+            password=True,
+            can_reveal_password=True,
+        )
+
+        status = ft.Text()
+
+        def login(_):
+
+            if (
+                email.value in registered_users
+                and registered_users[email.value]
+                == password.value
+            ):
+
+                view_main(None)
+
+            else:
+
+                status.value = "Invalid credentials"
+                status.color = "red"
+
+            page.update()
+
+        page.add(
+
+            create_card(
+                [
+
+                    ft.Text(
+                        "POS LOGIN",
+                        size=30,
+                        weight=ft.FontWeight.BOLD,
+                    ),
+
+                    email,
+                    password,
+                    status,
+
+                    ft.ElevatedButton(
+                        "LOGIN",
+                        width=300,
+                        on_click=login,
+                    ),
+
+                    ft.TextButton(
+                        "Create Account",
+                        on_click=view_register,
+                    ),
+                ]
+            )
+        )
+
+    # ==========================================
+    # REGISTER
+    # ==========================================
+
+    def view_register(_):
+
+        page.clean()
+
+        email = ft.TextField(
+            label="Email",
+            width=300,
+        )
+
+        password1 = ft.TextField(
+            label="Password",
+            width=300,
+            password=True,
+        )
+
+        password2 = ft.TextField(
+            label="Confirm Password",
+            width=300,
+            password=True,
+        )
+
+        status = ft.Text()
+
+        def register(_):
+
+            if (
+                not email.value
+                or not password1.value
+            ):
+
+                status.value = (
+                    "Fields cannot be empty"
+                )
+
+                status.color = "red"
+
+            elif (
+                email.value
+                in registered_users
+            ):
+
+                status.value = (
+                    "Email already exists"
+                )
+
+                status.color = "orange"
+
+            elif (
+                password1.value
+                != password2.value
+            ):
+
+                status.value = (
+                    "Passwords do not match"
+                )
+
+                status.color = "red"
+
+            else:
+
+                registered_users[
+                    email.value
+                ] = password1.value
+
+                status.value = (
+                    "Registration successful"
+                )
+
+                status.color = "green"
+
+            page.update()
+
+        page.add(
+
+            create_card(
+                [
+
+                    ft.Text(
+                        "REGISTER",
+                        size=30,
+                        weight=ft.FontWeight.BOLD,
+                    ),
+
+                    email,
+                    password1,
+                    password2,
+                    status,
+
+                    ft.ElevatedButton(
+                        "REGISTER",
+                        width=300,
+                        on_click=register,
+                    ),
+
+                    ft.TextButton(
+                        "Back to Login",
+                        on_click=view_login,
+                    ),
+                ]
+            )
+        )
+
+    # ==========================================
+    # START APP
+    # ==========================================
+
+    view_login(None)
+
+
+ft.app(target=main)
