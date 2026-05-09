@@ -1,4 +1,5 @@
 import flet as ft
+import os
 
 # ==========================================
 # GLOBAL DATA
@@ -42,15 +43,10 @@ def main(page: ft.Page):
                 1,
                 ft.Colors.BLUE_GREY_100,
             ),
-            shadow=ft.BoxShadow(
-                blur_radius=15,
-                spread_radius=1,
-                color=ft.Colors.BLUE_GREY_100,
-            ),
         )
 
     # ==========================================
-    # MAIN POS VIEW
+    # MAIN VIEW
     # ==========================================
 
     def view_main(_):
@@ -233,38 +229,56 @@ def main(page: ft.Page):
 
             status = ft.Text()
 
-            image_preview = ft.Image(
-                src="",
+            # ==========================================
+            # IMAGE PREVIEW
+            # ==========================================
+
+            image_preview = ft.Container(
+                content=ft.Text(
+                    "No Image Selected"
+                ),
                 width=120,
                 height=120,
-                fit=ft.BoxFit.COVER,
+                bgcolor=ft.Colors.BLUE_GREY_100,
                 border_radius=10,
+                alignment=ft.Alignment.CENTER,
             )
 
             # ==========================================
-            # FILE PICKER
+            # FILE PICKER - WORKS IN WEB MODE
             # ==========================================
 
-            async def pick_files(_):
-
+            async def handle_file_upload(e: ft.FilePickerResultEvent):
                 nonlocal selected_image
 
-                files = await page.pick_files_async(
-                    allow_multiple=False,
-                    allowed_extensions=[
-                        "png",
-                        "jpg",
-                        "jpeg",
-                    ],
-                )
+                if e.files:
+                    # Get the uploaded file path
+                    selected_image = e.files[0].path
+                    
+                    # Update preview
+                    image_preview.content = ft.Image(
+                        src=selected_image,
+                        width=120,
+                        height=120,
+                        fit=ft.BoxFit.COVER,
+                    )
 
-                if files:
-
-                    selected_image = files[0].path
-
-                    image_preview.src = selected_image
-
+                    status.value = "Image selected!"
+                    status.color = "green"
                     page.update()
+
+            file_picker = ft.FilePicker(on_result=handle_file_upload)
+            page.overlay.append(file_picker)
+
+            # ==========================================
+            # OPEN PICKER BUTTON
+            # ==========================================
+
+            async def open_file_picker(e):
+                await file_picker.pick_files(
+                    allowed_extensions=["png", "jpg", "jpeg"],
+                    allow_multiple=False,
+                )
 
             # ==========================================
             # ADD PRODUCT
@@ -280,7 +294,15 @@ def main(page: ft.Page):
                         or not stock_input.value
                     ):
 
-                        status.value = "Fill all fields"
+                        status.value = (
+                            "Fill all fields"
+                        )
+
+                        status.color = "red"
+
+                    elif not selected_image:
+
+                        status.value = "Please select an image"
                         status.color = "red"
 
                     else:
@@ -304,11 +326,17 @@ def main(page: ft.Page):
 
                         status.color = "green"
 
+                        # Clear inputs
+                        name_input.value = ""
+                        price_input.value = ""
+                        stock_input.value = ""
+                        image_preview.content = ft.Text("No Image Selected")
+
                         show_inventory()
 
-                except ValueError:
+                except Exception as ex:
 
-                    status.value = "Invalid values"
+                    status.value = f"Error: {str(ex)}"
                     status.color = "red"
 
                 page.update()
@@ -330,13 +358,15 @@ def main(page: ft.Page):
                                     src=item["image"],
                                     width=50,
                                     height=50,
-                                    fit=ft.ImageFit.COVER,
-                                    border_radius=5,
+                                    fit=ft.BoxFit.COVER,
+                                    error_content=ft.Text("No img"),
                                 )
                             ),
 
                             ft.DataCell(
-                                ft.Text(item["name"])
+                                ft.Text(
+                                    item["name"]
+                                )
                             ),
 
                             ft.DataCell(
@@ -347,7 +377,9 @@ def main(page: ft.Page):
 
                             ft.DataCell(
                                 ft.Text(
-                                    str(item["stock"])
+                                    str(
+                                        item["stock"]
+                                    )
                                 )
                             ),
                         ]
@@ -378,7 +410,7 @@ def main(page: ft.Page):
                         ft.ElevatedButton(
                             "Choose Image",
                             icon=ft.Icons.IMAGE,
-                            on_click=pick_files,
+                            on_click=open_file_picker,
                         ),
 
                         ft.ElevatedButton(
@@ -441,17 +473,17 @@ def main(page: ft.Page):
                 keyboard_type=ft.KeyboardType.NUMBER,
             )
 
-            # ==========================================
-            # PROCESS SALE
-            # ==========================================
-
             def process_sale(_):
 
                 try:
 
-                    selected = product_dropdown.value
+                    selected = (
+                        product_dropdown.value
+                    )
 
-                    qty = int(qty_input.value)
+                    qty = int(
+                        qty_input.value
+                    )
 
                     item = next(
                         i
@@ -491,16 +523,12 @@ def main(page: ft.Page):
 
                         status.color = "red"
 
-                except:
+                except Exception as ex:
 
-                    status.value = "Invalid sale"
+                    status.value = f"Error: {str(ex)}"
                     status.color = "red"
 
                 page.update()
-
-            # ==========================================
-            # PRODUCT CARDS
-            # ==========================================
 
             product_cards = []
 
@@ -525,8 +553,8 @@ def main(page: ft.Page):
                                     src=item["image"],
                                     width=150,
                                     height=120,
-                                    fit=ft.ImageFit.COVER,
-                                    border_radius=10,
+                                    fit=ft.BoxFit.COVER,
+                                    error_content=ft.Text("No img"),
                                 ),
 
                                 ft.Text(
@@ -571,16 +599,9 @@ def main(page: ft.Page):
 
                 ft.Divider(),
 
-                ft.Text(
-                    "Products",
-                    size=22,
-                    weight=ft.FontWeight.BOLD,
-                ),
-
                 ft.Row(
                     controls=product_cards,
                     wrap=True,
-                    scroll=ft.ScrollMode.AUTO,
                 ),
             ]
 
@@ -650,10 +671,6 @@ def main(page: ft.Page):
             ],
         )
 
-        # ==========================================
-        # LAYOUT
-        # ==========================================
-
         page.add(
 
             ft.Row(
@@ -713,7 +730,10 @@ def main(page: ft.Page):
 
             else:
 
-                status.value = "Invalid credentials"
+                status.value = (
+                    "Invalid credentials"
+                )
+
                 status.color = "red"
 
             page.update()
