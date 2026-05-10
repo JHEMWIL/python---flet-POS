@@ -1,5 +1,5 @@
 import flet as ft
-
+from datetime import datetime
 # ==========================================
 # GLOBAL DATA
 # ==========================================
@@ -11,27 +11,24 @@ sales_history = []
 
 def main(page: ft.Page):
 
-    # ==========================================
     # PAGE SETTINGS
-    # ==========================================
 
-    page.title = "Advanced POS System"
+
+    page.title = "POS System"
     page.theme_mode = ft.ThemeMode.LIGHT
     page.bgcolor = ft.Colors.BLUE_GREY_50
     page.window_width = 1200
     page.window_height = 800
     page.scroll = ft.ScrollMode.AUTO
+    page.vertical_alignment=ft.MainAxisAlignment.CENTER
+    page.horizontal_alignment=ft.CrossAxisAlignment.CENTER
 
-    # ==========================================
     # GLOBAL FILE PICKER
-    # ==========================================
 
     file_picker = ft.FilePicker()
     page.services.append(file_picker)
 
-    # ==========================================
     # CARD COMPONENT
-    # ==========================================
 
     def create_card(content_list, width=400):
 
@@ -51,9 +48,7 @@ def main(page: ft.Page):
             ),
         )
 
-    # ==========================================
     # MAIN VIEW
-    # ==========================================
 
     def view_main(_):
 
@@ -64,11 +59,11 @@ def main(page: ft.Page):
             scroll=ft.ScrollMode.AUTO,
         )
 
-        # ==========================================
-        # DASHBOARD
-        # ==========================================
+
+         # DASHBOARD
 
         def show_dashboard():
+            from datetime import datetime, timedelta
 
             total_revenue = sum(
                 sale["total"]
@@ -85,7 +80,6 @@ def main(page: ft.Page):
             sales_rows = []
 
             for sale in sales_history[::-1]:
-
                 sales_rows.append(
                     ft.DataRow(
                         cells=[
@@ -108,119 +102,249 @@ def main(page: ft.Page):
                     )
                 )
 
-            content_area.controls = [
+            # WEEKLY SALES CALENDAR (GitHub Style)
 
-                ft.Text(
-                    "Dashboard",
-                    size=30,
-                    weight=ft.FontWeight.BOLD,
-                ),
+            today = datetime.now()
+            start_of_week = today - timedelta(days=today.weekday())
 
-                ft.Row(
-                    controls=[
+            # Initialize daily sales
+            daily_sales = {}
+            daily_counts = {}
+            for i in range(7):
+                day = start_of_week + timedelta(days=i)
+                daily_sales[day.strftime("%Y-%m-%d")] = 0
+                daily_counts[day.strftime("%Y-%m-%d")] = 0
 
-                        ft.Container(
-                            expand=True,
-                            padding=20,
-                            bgcolor=ft.Colors.GREEN_700,
-                            border_radius=15,
+            # Aggregate sales by actual date
+            for sale in sales_history:
+                if "date" not in sale:
+                    sale["date"] = today.strftime("%Y-%m-%d")
 
-                            content=ft.Column(
-                                controls=[
-                                    ft.Text(
-                                        "Revenue",
-                                        color="white",
-                                    ),
+                sale_date = sale.get("date", today.strftime("%Y-%m-%d"))
 
-                                    ft.Text(
-                                        f"${total_revenue:.2f}",
-                                        size=28,
-                                        color="white",
-                                        weight=ft.FontWeight.BOLD,
-                                    ),
-                                ]
+                # Only count sales from this week
+                try:
+                    sale_datetime = datetime.strptime(sale_date, "%Y-%m-%d")
+                    if start_of_week.date() <= sale_datetime.date() <= (start_of_week + timedelta(days=6)).date():
+                        daily_sales[sale_date] += sale["total"]
+                        daily_counts[sale_date] += 1
+                except ValueError:
+                    pass
+
+            # Find max revenue for scaling colors
+            max_revenue = max([v for v in daily_sales.values() if v > 0]) if any(
+                v > 0 for v in daily_sales.values()) else 1
+
+            day_names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+            week_cells = []
+
+            for i in range(7):
+                day = start_of_week + timedelta(days=i)
+                day_str = day.strftime("%Y-%m-%d")
+                day_num = day.strftime("%d")
+                day_name = day_names[i]
+
+                day_sales_count = daily_counts.get(day_str, 0)
+                day_revenue = daily_sales.get(day_str, 0)
+
+                # GitHub style color intensity based on sales
+                if day_revenue == 0:
+                    bg_color = "#ebedf0"  # Light gray - no activity
+                    intensity = 0
+                else:
+                    intensity = day_revenue / max_revenue if max_revenue > 0 else 0
+
+                    if intensity < 0.25:
+                        bg_color = "#c6e48b"  # Light green
+                    elif intensity < 0.5:
+                        bg_color = "#7bc96f"  # Medium green
+                    elif intensity < 0.75:
+                        bg_color = "#239a3b"  # Dark green
+                    else:
+                        bg_color = "#196127"  # Very dark green
+
+                week_cells.append(
+                    ft.Container(
+                        width=50,
+                        height=50,
+                        bgcolor=bg_color,
+                        border_radius=5,
+                        alignment=ft.Alignment.CENTER,
+                        tooltip=f"{day_name}, {day_num} - ${day_revenue:.2f} ({day_sales_count} sales)",
+                        content=ft.Text(
+                            day_num,
+                            size=12,
+                            weight=ft.FontWeight.BOLD,
+                            color="white" if intensity > 0.5 else "black",
+                        ),
+                    )
+                )
+
+            dashboard_content = ft.Column(
+                scroll=ft.ScrollMode.AUTO,
+                controls=[
+
+                    ft.Text(
+                        "Dashboard",
+                        size=30,
+                        weight=ft.FontWeight.BOLD,
+                    ),
+
+                    ft.Row(
+                        controls=[
+
+                            ft.Container(
+                                expand=True,
+                                padding=20,
+                                bgcolor=ft.Colors.GREEN_700,
+                                border_radius=15,
+
+                                content=ft.Column(
+                                    controls=[
+                                        ft.Text(
+                                            "Revenue",
+                                            color="white",
+                                        ),
+
+                                        ft.Text(
+                                            f"${total_revenue:.2f}",
+                                            size=28,
+                                            color="white",
+                                            weight=ft.FontWeight.BOLD,
+                                        ),
+                                    ]
+                                ),
                             ),
-                        ),
 
-                        ft.Container(
-                            expand=True,
-                            padding=20,
-                            bgcolor=ft.Colors.BLUE_700,
-                            border_radius=15,
+                            ft.Container(
+                                expand=True,
+                                padding=20,
+                                bgcolor=ft.Colors.BLUE_700,
+                                border_radius=15,
 
-                            content=ft.Column(
-                                controls=[
-                                    ft.Text(
-                                        "Products",
-                                        color="white",
-                                    ),
+                                content=ft.Column(
+                                    controls=[
+                                        ft.Text(
+                                            "Products",
+                                            color="white",
+                                        ),
 
-                                    ft.Text(
-                                        str(total_products),
-                                        size=28,
-                                        color="white",
-                                        weight=ft.FontWeight.BOLD,
-                                    ),
-                                ]
+                                        ft.Text(
+                                            str(total_products),
+                                            size=28,
+                                            color="white",
+                                            weight=ft.FontWeight.BOLD,
+                                        ),
+                                    ]
+                                ),
                             ),
-                        ),
 
-                        ft.Container(
-                            expand=True,
-                            padding=20,
-                            bgcolor=ft.Colors.ORANGE_700,
-                            border_radius=15,
+                            ft.Container(
+                                expand=True,
+                                padding=20,
+                                bgcolor=ft.Colors.ORANGE_700,
+                                border_radius=15,
 
-                            content=ft.Column(
-                                controls=[
-                                    ft.Text(
-                                        "Stock",
-                                        color="white",
-                                    ),
+                                content=ft.Column(
+                                    controls=[
+                                        ft.Text(
+                                            "Stock",
+                                            color="white",
+                                        ),
 
-                                    ft.Text(
-                                        str(total_stock),
-                                        size=28,
-                                        color="white",
-                                        weight=ft.FontWeight.BOLD,
-                                    ),
-                                ]
+                                        ft.Text(
+                                            str(total_stock),
+                                            size=28,
+                                            color="white",
+                                            weight=ft.FontWeight.BOLD,
+                                        ),
+                                    ]
+                                ),
                             ),
+                        ]
+                    ),
+
+                    ft.Divider(),
+
+                    ft.Text(
+                        "Weekly Sales Heatmap",
+                        size=22,
+                        weight=ft.FontWeight.BOLD,
+                    ),
+
+                    ft.Container(
+                        padding=20,
+                        bgcolor=ft.Colors.WHITE,
+                        border_radius=10,
+                        border=ft.Border.all(1, ft.Colors.BLUE_GREY_100),
+                        content=ft.Column(
+                            controls=[
+                                ft.Row(
+                                    controls=[
+                                        ft.Text(day_names[i], size=10, weight=ft.FontWeight.BOLD)
+                                        for i in range(7)
+                                    ],
+                                    spacing=5,
+                                    alignment=ft.MainAxisAlignment.CENTER,
+                                ),
+
+                                ft.Row(
+                                    controls=week_cells,
+                                    spacing=5,
+                                    alignment=ft.MainAxisAlignment.CENTER,
+                                ),
+
+                                ft.Container(height=10),
+
+                                ft.Row(
+                                    controls=[
+                                        ft.Text("Less", size=9),
+                                        ft.Container(width=10, height=10, bgcolor="#ebedf0", border_radius=2),
+                                        ft.Container(width=10, height=10, bgcolor="#c6e48b", border_radius=2),
+                                        ft.Container(width=10, height=10, bgcolor="#7bc96f", border_radius=2),
+                                        ft.Container(width=10, height=10, bgcolor="#239a3b", border_radius=2),
+                                        ft.Container(width=10, height=10, bgcolor="#196127", border_radius=2),
+                                        ft.Text("More", size=9),
+                                    ],
+                                    spacing=5,
+                                ),
+                            ],
+                            spacing=10,
                         ),
-                    ]
-                ),
+                    ),
 
-                ft.Divider(),
+                    ft.Divider(),
 
-                ft.Text(
-                    "Recent Sales",
-                    size=22,
-                    weight=ft.FontWeight.BOLD,
-                ),
+                    ft.Text(
+                        "Recent Sales",
+                        size=22,
+                        weight=ft.FontWeight.BOLD,
+                    ),
 
-                ft.DataTable(
-                    columns=[
-                        ft.DataColumn(
-                            ft.Text("Product")
-                        ),
+                    ft.DataTable(
+                        columns=[
+                            ft.DataColumn(
+                                ft.Text("Product")
+                            ),
 
-                        ft.DataColumn(
-                            ft.Text("Quantity")
-                        ),
+                            ft.DataColumn(
+                                ft.Text("Quantity")
+                            ),
 
-                        ft.DataColumn(
-                            ft.Text("Total")
-                        ),
-                    ],
-                    rows=sales_rows,
-                ),
-            ]
+                            ft.DataColumn(
+                                ft.Text("Total")
+                            ),
+                        ],
+                        rows=sales_rows,
+                    ),
+                ]
+            )
+
+            content_area.controls = [dashboard_content]
 
             page.update()
 
-        # ==========================================
         # INVENTORY
-        # ==========================================
 
         def show_inventory():
 
@@ -245,9 +369,7 @@ def main(page: ft.Page):
 
             status = ft.Text()
 
-            # ==========================================
             # IMAGE PREVIEW
-            # ==========================================
 
             image_preview = ft.Container(
                 content=ft.Text(
@@ -260,9 +382,7 @@ def main(page: ft.Page):
                 alignment=ft.Alignment.CENTER,
             )
 
-            # ==========================================
             # FILE PICKER
-            # ==========================================
 
             async def open_file_picker(_):
 
@@ -304,9 +424,7 @@ def main(page: ft.Page):
 
                 page.update()
 
-            # ==========================================
             # ADD PRODUCT
-            # ==========================================
 
             def add_product(_):
 
@@ -374,13 +492,20 @@ def main(page: ft.Page):
 
                 page.update()
 
-            # ==========================================
             # INVENTORY TABLE
-            # ==========================================
 
             rows = []
 
-            for item in inventory:
+            for idx, item in enumerate(inventory):
+                def delete_product(index):
+                    def on_delete(_):
+                        inventory.pop(index)
+                        status.value = "Product deleted successfully"
+                        status.color = "green"
+                        show_inventory()
+                        page.update()
+
+                    return on_delete
 
                 rows.append(
 
@@ -415,95 +540,119 @@ def main(page: ft.Page):
                                     str(item["stock"])
                                 )
                             ),
+
+                            ft.DataCell(
+                                ft.IconButton(
+                                    icon=ft.Icons.DELETE,
+                                    icon_color="red",
+                                    on_click=delete_product(idx),
+                                    tooltip="Delete Product",
+                                )
+                            ),
                         ]
                     )
                 )
 
-            content_area.controls = [
+            inventory_content = ft.Column(
+                scroll=ft.ScrollMode.AUTO,
+                controls=[
 
-                ft.Text(
-                    "Inventory Management",
-                    size=30,
-                    weight=ft.FontWeight.BOLD,
-                ),
+                    ft.Text(
+                        "Inventory Management",
+                        size=30,
+                        weight=ft.FontWeight.BOLD,
+                    ),
 
-                ft.Row(
-                    controls=[
-                        name_input,
-                        price_input,
-                        stock_input,
-                    ]
-                ),
+                    ft.Row(
+                        controls=[
+                            name_input,
+                            price_input,
+                            stock_input,
+                        ]
+                    ),
 
-                image_preview,
+                    image_preview,
 
-                ft.Row(
-                    controls=[
+                    ft.Row(
+                        controls=[
 
-                        ft.ElevatedButton(
-                            "Choose Image",
-                            icon=ft.Icons.IMAGE,
-                            on_click=open_file_picker,
-                        ),
+                            ft.ElevatedButton(
+                                "Choose Image",
+                                icon=ft.Icons.IMAGE,
+                                on_click=open_file_picker,
+                            ),
 
-                        ft.ElevatedButton(
-                            "Add Product",
-                            icon=ft.Icons.ADD,
-                            on_click=add_product,
-                        ),
-                    ]
-                ),
+                            ft.ElevatedButton(
+                                "Add Product",
+                                icon=ft.Icons.ADD,
+                                on_click=add_product,
+                            ),
+                        ]
+                    ),
 
-                status,
+                    status,
 
-                ft.Divider(),
+                    ft.Divider(),
 
-                ft.DataTable(
-                    columns=[
+                    ft.DataTable(
+                        columns=[
 
-                        ft.DataColumn(
-                            ft.Text("Image")
-                        ),
+                            ft.DataColumn(
+                                ft.Text("Image")
+                            ),
 
-                        ft.DataColumn(
-                            ft.Text("Name")
-                        ),
+                            ft.DataColumn(
+                                ft.Text("Name")
+                            ),
 
-                        ft.DataColumn(
-                            ft.Text("Price")
-                        ),
+                            ft.DataColumn(
+                                ft.Text("Price")
+                            ),
 
-                        ft.DataColumn(
-                            ft.Text("Stock")
-                        ),
-                    ],
+                            ft.DataColumn(
+                                ft.Text("Stock")
+                            ),
 
-                    rows=rows,
-                ),
-            ]
+                            ft.DataColumn(
+                                ft.Text("Action")
+                            ),
+                        ],
+
+                        rows=rows,
+                    ),
+                ]
+            )
+
+            content_area.controls = [inventory_content]
 
             page.update()
 
-        # ==========================================
         # SALES
-        # ==========================================
 
         def show_sales():
 
             status = ft.Text()
 
-            product_dropdown = ft.Dropdown(
-                label="Select Product",
+            product_search = ft.TextField(
+                label="🔍 Search Product",
                 width=300,
-
-                options=[
-                    ft.dropdown.Option(
-                        item["name"]
-                    )
-                    for item in inventory
-                    if item["stock"] > 0
-                ],
+                hint_text="Type product name...",
             )
+
+            selected_product = ft.Text()
+
+            filtered_products = []
+
+            def on_search_change(e):
+                nonlocal filtered_products
+                search_text = product_search.value.lower()
+                filtered_products = [
+                    item for item in inventory
+                    if search_text in item["name"].lower() and item["stock"] > 0
+                ]
+                update_product_list()
+
+            product_search.on_change = on_search_change
 
             qty_input = ft.TextField(
                 label="Quantity",
@@ -512,13 +661,66 @@ def main(page: ft.Page):
                 keyboard_type=ft.KeyboardType.NUMBER,
             )
 
+            product_buttons_container = ft.Column(
+                scroll=ft.ScrollMode.AUTO,
+                height=150,
+            )
+
+            def update_product_list():
+                product_buttons = []
+
+                for product_item in filtered_products:
+                    def make_click_handler(item):
+                        def on_click(_):
+                            selected_product.value = item["name"]
+                            product_search.value = item["name"]
+                            page.update()
+
+                        return on_click
+
+                    product_buttons.append(
+                        ft.Container(
+                            content=ft.Row(
+                                controls=[
+                                    ft.Image(
+                                        src=product_item["image"],
+                                        width=40,
+                                        height=40,
+                                        fit=ft.BoxFit.COVER,
+                                        error_content=ft.Text("No img"),
+                                    ),
+                                    ft.Column(
+                                        expand=True,
+                                        controls=[
+                                            ft.Text(product_item["name"], weight=ft.FontWeight.BOLD),
+                                            ft.Text(f"${product_item['price']:.2f} | Stock: {product_item['stock']}",
+                                                    size=10),
+                                        ],
+                                    ),
+                                ],
+                                spacing=10,
+                            ),
+                            padding=10,
+                            bgcolor=ft.Colors.BLUE_50,
+                            border_radius=8,
+                            on_click=make_click_handler(product_item),
+                        )
+                    )
+
+                product_buttons_container.controls = product_buttons
+                page.update()
+
             def process_sale(_):
 
                 try:
 
-                    selected = (
-                        product_dropdown.value
-                    )
+                    selected = selected_product.value
+
+                    if not selected:
+                        status.value = "Please select a product"
+                        status.color = "red"
+                        page.update()
+                        return
 
                     qty = int(
                         qty_input.value
@@ -543,6 +745,7 @@ def main(page: ft.Page):
                                 "name": selected,
                                 "quantity": qty,
                                 "total": total,
+                                "date": datetime.now().strftime("%Y-%m-%d"),
                             }
                         )
 
@@ -551,6 +754,11 @@ def main(page: ft.Page):
                         )
 
                         status.color = "green"
+
+                        # Clear inputs
+                        product_search.value = ""
+                        selected_product.value = ""
+                        qty_input.value = "1"
 
                         show_sales()
 
@@ -575,7 +783,6 @@ def main(page: ft.Page):
             product_cards = []
 
             for item in inventory:
-
                 product_cards.append(
 
                     ft.Container(
@@ -619,42 +826,66 @@ def main(page: ft.Page):
                     )
                 )
 
-            content_area.controls = [
+            sales_content = ft.Column(
+                scroll=ft.ScrollMode.AUTO,
+                controls=[
 
-                ft.Text(
-                    "Sales",
-                    size=30,
-                    weight=ft.FontWeight.BOLD,
-                ),
+                    ft.Text(
+                        "Sales",
+                        size=30,
+                        weight=ft.FontWeight.BOLD,
+                    ),
 
-                ft.Row(
-                    controls=[
-                        product_dropdown,
-                        qty_input,
-                    ]
-                ),
+                    ft.Row(
+                        controls=[
+                            product_search,
+                            qty_input,
+                        ],
+                        spacing=10,
+                    ),
 
-                ft.ElevatedButton(
-                    "Complete Sale",
-                    icon=ft.Icons.SHOPPING_CART,
-                    on_click=process_sale,
-                ),
+                    ft.Container(
+                        content=product_buttons_container,
+                        border=ft.Border.all(1, ft.Colors.BLUE_GREY_200),
+                        border_radius=8,
+                        padding=10,
+                    ),
 
-                status,
+                    ft.Text(
+                        f"Selected: {selected_product.value}",
+                        size=12,
+                        color=ft.Colors.BLUE_700,
+                        weight=ft.FontWeight.BOLD,
+                    ),
 
-                ft.Divider(),
+                    ft.ElevatedButton(
+                        "Complete Sale",
+                        icon=ft.Icons.SHOPPING_CART,
+                        on_click=process_sale,
+                    ),
 
-                ft.Row(
-                    controls=product_cards,
-                    wrap=True,
-                ),
-            ]
+                    status,
+
+                    ft.Divider(),
+
+                    ft.Text(
+                        "All Products",
+                        size=22,
+                        weight=ft.FontWeight.BOLD,
+                    ),
+
+                    ft.Row(
+                        controls=product_cards,
+                        wrap=True,
+                    ),
+                ]
+            )
+
+            content_area.controls = [sales_content]
 
             page.update()
 
-        # ==========================================
         # NAVIGATION
-        # ==========================================
 
         def nav_change(e):
 
@@ -753,9 +984,7 @@ def main(page: ft.Page):
 
         show_dashboard()
 
-    # ==========================================
     # LOGIN
-    # ==========================================
 
     def view_login(_):
 
@@ -795,38 +1024,41 @@ def main(page: ft.Page):
 
             page.update()
 
+        # CENTER THE LOGIN CARD
         page.add(
 
-            create_card(
-                [
+            ft.Container(
+                content=create_card(
+                    [
 
-                    ft.Text(
-                        "POS LOGIN",
-                        size=30,
-                        weight=ft.FontWeight.BOLD,
-                    ),
+                        ft.Text(
+                            "POS LOGIN",
+                            size=30,
+                            weight=ft.FontWeight.BOLD,
+                        ),
 
-                    email,
-                    password,
-                    status,
+                        email,
+                        password,
+                        status,
 
-                    ft.ElevatedButton(
-                        "LOGIN",
-                        width=300,
-                        on_click=login,
-                    ),
+                        ft.ElevatedButton(
+                            "LOGIN",
+                            width=300,
+                            on_click=login,
+                        ),
 
-                    ft.TextButton(
-                        "Create Account",
-                        on_click=view_register,
-                    ),
-                ]
+                        ft.TextButton(
+                            "Create Account",
+                            on_click=view_register,
+                        ),
+                    ]
+                ),
+                expand=True,
+                alignment=ft.Alignment.CENTER,
             )
         )
 
-    # ==========================================
     # REGISTER
-    # ==========================================
 
     def view_register(_):
 
@@ -900,41 +1132,42 @@ def main(page: ft.Page):
 
             page.update()
 
+        # CENTER THE REGISTER CARD
         page.add(
 
-            create_card(
-                [
+            ft.Container(
+                content=create_card(
+                    [
 
-                    ft.Text(
-                        "REGISTER",
-                        size=30,
-                        weight=ft.FontWeight.BOLD,
-                    ),
+                        ft.Text(
+                            "REGISTER",
+                            size=30,
+                            weight=ft.FontWeight.BOLD,
+                        ),
 
-                    email,
-                    password1,
-                    password2,
-                    status,
+                        email,
+                        password1,
+                        password2,
+                        status,
 
-                    ft.ElevatedButton(
-                        "REGISTER",
-                        width=300,
-                        on_click=register,
-                    ),
+                        ft.ElevatedButton(
+                            "REGISTER",
+                            width=300,
+                            on_click=register,
+                        ),
 
-                    ft.TextButton(
-                        "Back to Login",
-                        on_click=view_login,
-                    ),
-                ]
+                        ft.TextButton(
+                            "Back to Login",
+                            on_click=view_login,
+                        ),
+                    ]
+                ),
+                expand=True,
+                alignment=ft.Alignment.CENTER,
             )
         )
-
-    # ==========================================
     # START APP
-    # ==========================================
 
     view_login(None)
-
 
 ft.app(target=main)
