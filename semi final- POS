@@ -1,5 +1,4 @@
 import flet as ft
-import os
 
 # ==========================================
 # GLOBAL DATA
@@ -22,6 +21,13 @@ def main(page: ft.Page):
     page.window_width = 1200
     page.window_height = 800
     page.scroll = ft.ScrollMode.AUTO
+
+    # ==========================================
+    # GLOBAL FILE PICKER
+    # ==========================================
+
+    file_picker = ft.FilePicker()
+    page.services.append(file_picker)
 
     # ==========================================
     # CARD COMPONENT
@@ -86,11 +92,13 @@ def main(page: ft.Page):
                             ft.DataCell(
                                 ft.Text(sale["name"])
                             ),
+
                             ft.DataCell(
                                 ft.Text(
                                     str(sale["quantity"])
                                 )
                             ),
+
                             ft.DataCell(
                                 ft.Text(
                                     f"${sale['total']:.2f}"
@@ -116,12 +124,14 @@ def main(page: ft.Page):
                             padding=20,
                             bgcolor=ft.Colors.GREEN_700,
                             border_radius=15,
+
                             content=ft.Column(
                                 controls=[
                                     ft.Text(
                                         "Revenue",
                                         color="white",
                                     ),
+
                                     ft.Text(
                                         f"${total_revenue:.2f}",
                                         size=28,
@@ -137,12 +147,14 @@ def main(page: ft.Page):
                             padding=20,
                             bgcolor=ft.Colors.BLUE_700,
                             border_radius=15,
+
                             content=ft.Column(
                                 controls=[
                                     ft.Text(
                                         "Products",
                                         color="white",
                                     ),
+
                                     ft.Text(
                                         str(total_products),
                                         size=28,
@@ -158,12 +170,14 @@ def main(page: ft.Page):
                             padding=20,
                             bgcolor=ft.Colors.ORANGE_700,
                             border_radius=15,
+
                             content=ft.Column(
                                 controls=[
                                     ft.Text(
                                         "Stock",
                                         color="white",
                                     ),
+
                                     ft.Text(
                                         str(total_stock),
                                         size=28,
@@ -189,9 +203,11 @@ def main(page: ft.Page):
                         ft.DataColumn(
                             ft.Text("Product")
                         ),
+
                         ft.DataColumn(
                             ft.Text("Quantity")
                         ),
+
                         ft.DataColumn(
                             ft.Text("Total")
                         ),
@@ -245,17 +261,29 @@ def main(page: ft.Page):
             )
 
             # ==========================================
-            # FILE PICKER - WORKS IN WEB MODE
+            # FILE PICKER
             # ==========================================
 
-            async def handle_file_upload(e: ft.FilePickerResultEvent):
+            async def open_file_picker(_):
+
                 nonlocal selected_image
 
-                if e.files:
-                    # Get the uploaded file path
-                    selected_image = e.files[0].path
-                    
-                    # Update preview
+                files = await file_picker.pick_files(
+                    allow_multiple=False,
+                    allowed_extensions=[
+                        "png",
+                        "jpg",
+                        "jpeg",
+                    ],
+                )
+
+                if files:
+
+                    # IMPORTANT FIX
+                    selected_image = (
+                        f"file://{files[0].path}"
+                    )
+
                     image_preview.content = ft.Image(
                         src=selected_image,
                         width=120,
@@ -263,22 +291,18 @@ def main(page: ft.Page):
                         fit=ft.BoxFit.COVER,
                     )
 
-                    status.value = "Image selected!"
+                    status.value = (
+                        "Image selected!"
+                    )
+
                     status.color = "green"
-                    page.update()
 
-            file_picker = ft.FilePicker(on_result=handle_file_upload)
-            page.overlay.append(file_picker)
+                else:
 
-            # ==========================================
-            # OPEN PICKER BUTTON
-            # ==========================================
+                    status.value = "Cancelled!"
+                    status.color = "red"
 
-            async def open_file_picker(e):
-                await file_picker.pick_files(
-                    allowed_extensions=["png", "jpg", "jpeg"],
-                    allow_multiple=False,
-                )
+                page.update()
 
             # ==========================================
             # ADD PRODUCT
@@ -289,9 +313,9 @@ def main(page: ft.Page):
                 try:
 
                     if (
-                        not name_input.value
-                        or not price_input.value
-                        or not stock_input.value
+                            not name_input.value
+                            or not price_input.value
+                            or not stock_input.value
                     ):
 
                         status.value = (
@@ -302,7 +326,10 @@ def main(page: ft.Page):
 
                     elif not selected_image:
 
-                        status.value = "Please select an image"
+                        status.value = (
+                            "Please select an image"
+                        )
+
                         status.color = "red"
 
                     else:
@@ -326,17 +353,23 @@ def main(page: ft.Page):
 
                         status.color = "green"
 
-                        # Clear inputs
+                        # Clear Inputs
                         name_input.value = ""
                         price_input.value = ""
                         stock_input.value = ""
-                        image_preview.content = ft.Text("No Image Selected")
+
+                        image_preview.content = ft.Text(
+                            "No Image Selected"
+                        )
 
                         show_inventory()
 
                 except Exception as ex:
 
-                    status.value = f"Error: {str(ex)}"
+                    status.value = (
+                        f"Error: {str(ex)}"
+                    )
+
                     status.color = "red"
 
                 page.update()
@@ -350,23 +383,25 @@ def main(page: ft.Page):
             for item in inventory:
 
                 rows.append(
+
                     ft.DataRow(
                         cells=[
 
                             ft.DataCell(
+
                                 ft.Image(
                                     src=item["image"],
                                     width=50,
                                     height=50,
                                     fit=ft.BoxFit.COVER,
-                                    error_content=ft.Text("No img"),
+                                    error_content=ft.Text(
+                                        "No img"
+                                    ),
                                 )
                             ),
 
                             ft.DataCell(
-                                ft.Text(
-                                    item["name"]
-                                )
+                                ft.Text(item["name"])
                             ),
 
                             ft.DataCell(
@@ -377,9 +412,7 @@ def main(page: ft.Page):
 
                             ft.DataCell(
                                 ft.Text(
-                                    str(
-                                        item["stock"]
-                                    )
+                                    str(item["stock"])
                                 )
                             ),
                         ]
@@ -427,19 +460,24 @@ def main(page: ft.Page):
 
                 ft.DataTable(
                     columns=[
+
                         ft.DataColumn(
                             ft.Text("Image")
                         ),
+
                         ft.DataColumn(
                             ft.Text("Name")
                         ),
+
                         ft.DataColumn(
                             ft.Text("Price")
                         ),
+
                         ft.DataColumn(
                             ft.Text("Stock")
                         ),
                     ],
+
                     rows=rows,
                 ),
             ]
@@ -457,6 +495,7 @@ def main(page: ft.Page):
             product_dropdown = ft.Dropdown(
                 label="Select Product",
                 width=300,
+
                 options=[
                     ft.dropdown.Option(
                         item["name"]
@@ -496,7 +535,7 @@ def main(page: ft.Page):
                         item["stock"] -= qty
 
                         total = (
-                            item["price"] * qty
+                                item["price"] * qty
                         )
 
                         sales_history.append(
@@ -525,7 +564,10 @@ def main(page: ft.Page):
 
                 except Exception as ex:
 
-                    status.value = f"Error: {str(ex)}"
+                    status.value = (
+                        f"Error: {str(ex)}"
+                    )
+
                     status.color = "red"
 
                 page.update()
@@ -541,6 +583,7 @@ def main(page: ft.Page):
                         padding=10,
                         bgcolor="white",
                         border_radius=15,
+
                         border=ft.Border.all(
                             1,
                             ft.Colors.BLUE_GREY_100,
@@ -554,7 +597,9 @@ def main(page: ft.Page):
                                     width=150,
                                     height=120,
                                     fit=ft.BoxFit.COVER,
-                                    error_content=ft.Text("No img"),
+                                    error_content=ft.Text(
+                                        "No img"
+                                    ),
                                 ),
 
                                 ft.Text(
@@ -613,7 +658,9 @@ def main(page: ft.Page):
 
         def nav_change(e):
 
-            index = e.control.selected_index
+            index = (
+                e.control.selected_index
+            )
 
             if index == 0:
                 show_dashboard()
@@ -630,15 +677,22 @@ def main(page: ft.Page):
         sidebar = ft.NavigationRail(
 
             selected_index=0,
+
             bgcolor=ft.Colors.BLUE_GREY_900,
-            label_type=ft.NavigationRailLabelType.ALL,
+
+            label_type=(
+                ft.NavigationRailLabelType.ALL
+            ),
+
             min_width=100,
+
             on_change=nav_change,
 
             destinations=[
 
                 ft.NavigationRailDestination(
                     icon=ft.Icons.DASHBOARD,
+
                     label=ft.Text(
                         "Dashboard",
                         color="white",
@@ -647,6 +701,7 @@ def main(page: ft.Page):
 
                 ft.NavigationRailDestination(
                     icon=ft.Icons.INVENTORY,
+
                     label=ft.Text(
                         "Inventory",
                         color="white",
@@ -655,6 +710,7 @@ def main(page: ft.Page):
 
                 ft.NavigationRailDestination(
                     icon=ft.Icons.PAYMENTS,
+
                     label=ft.Text(
                         "Sales",
                         color="white",
@@ -663,6 +719,7 @@ def main(page: ft.Page):
 
                 ft.NavigationRailDestination(
                     icon=ft.Icons.LOGOUT,
+
                     label=ft.Text(
                         "Logout",
                         color="white",
@@ -721,9 +778,9 @@ def main(page: ft.Page):
         def login(_):
 
             if (
-                email.value in registered_users
-                and registered_users[email.value]
-                == password.value
+                    email.value in registered_users
+                    and registered_users[email.value]
+                    == password.value
             ):
 
                 view_main(None)
@@ -797,8 +854,8 @@ def main(page: ft.Page):
         def register(_):
 
             if (
-                not email.value
-                or not password1.value
+                    not email.value
+                    or not password1.value
             ):
 
                 status.value = (
@@ -808,8 +865,8 @@ def main(page: ft.Page):
                 status.color = "red"
 
             elif (
-                email.value
-                in registered_users
+                    email.value
+                    in registered_users
             ):
 
                 status.value = (
@@ -819,8 +876,8 @@ def main(page: ft.Page):
                 status.color = "orange"
 
             elif (
-                password1.value
-                != password2.value
+                    password1.value
+                    != password2.value
             ):
 
                 status.value = (
