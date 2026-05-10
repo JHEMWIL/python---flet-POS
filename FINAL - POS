@@ -1,0 +1,762 @@
+import flet as ft
+from datetime import datetime, timedelta
+import base64
+import os
+import io
+from PIL import Image  # Optional: install Pillow for image resizing
+
+# ==========================================
+# GLOBAL DATA
+# ==========================================
+registered_users = {}
+inventory = []
+sales_history = []
+
+
+def resize_image_base64(file_bytes, max_size=(200, 200)):
+    """Optional: shrink large images to avoid memory issues."""
+    try:
+        img = Image.open(io.BytesIO(file_bytes))
+        img.thumbnail(max_size, Image.Resampling.LANCZOS)
+        buffer = io.BytesIO()
+        img.save(buffer, format="PNG")
+        b64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
+        return f"data:image/png;base64,{b64}"
+    except Exception:
+        # Fallback if Pillow not installed or image broken
+        return None
+
+
+def main(page: ft.Page):
+    # PAGE SETTINGS
+    page.title = "POS System"
+    page.theme_mode = ft.ThemeMode.LIGHT
+    page.bgcolor = ft.Colors.BLUE_GREY_50
+    page.window_width = 1200
+    page.window_height = 800
+    page.scroll = ft.ScrollMode.AUTO
+    page.vertical_alignment = ft.MainAxisAlignment.CENTER
+    page.horizontal_alignment = ft.CrossAxisAlignment.CENTER
+
+    # GLOBAL FILE PICKER
+    file_picker = ft.FilePicker()
+    page.services.append(file_picker)
+
+    # CARD COMPONENT
+    def create_card(content_list, width=400):
+        return ft.Container(
+            content=ft.Column(
+                controls=content_list,
+                spacing=15,
+                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            ),
+            width=width,
+            padding=30,
+            bgcolor=ft.Colors.WHITE,
+            border_radius=20,
+            border=ft.Border.all(1, ft.Colors.BLUE_GREY_100),
+        )
+
+    # MAIN VIEW
+    def view_main(_):
+        page.clean()
+
+        content_area = ft.Column(
+            expand=True,
+            scroll=ft.ScrollMode.AUTO,
+        )
+
+        # DASHBOARD
+        def show_dashboard():
+            total_revenue = sum(sale["total"] for sale in sales_history)
+            total_products = len(inventory)
+            total_stock = sum(item["stock"] for item in inventory)
+
+            sales_rows = []
+            for sale in sales_history[::-1]:
+                sales_rows.append(
+                    ft.DataRow(
+                        cells=[
+                            ft.DataCell(ft.Text(sale["name"])),
+                            ft.DataCell(ft.Text(str(sale["quantity"]))),
+                            ft.DataCell(ft.Text(f"${sale['total']:.2f}")),
+                        ]
+                    )
+                )
+
+            # WEEKLY SALES CALENDAR (GitHub Style)
+            today = datetime.now()
+            start_of_week = today - timedelta(days=today.weekday())
+
+            daily_sales = {}
+            daily_counts = {}
+            for i in range(7):
+                day = start_of_week + timedelta(days=i)
+                daily_sales[day.strftime("%Y-%m-%d")] = 0
+                daily_counts[day.strftime("%Y-%m-%d")] = 0
+
+            for sale in sales_history:
+                if "date" not in sale:
+                    sale["date"] = today.strftime("%Y-%m-%d")
+                sale_date = sale.get("date", today.strftime("%Y-%m-%d"))
+                try:
+                    sale_datetime = datetime.strptime(sale_date, "%Y-%m-%d")
+                    if start_of_week.date() <= sale_datetime.date() <= (start_of_week + timedelta(days=6)).date():
+                        daily_sales[sale_date] += sale["total"]
+                        daily_counts[sale_date] += 1
+                except ValueError:
+                    pass
+
+            max_revenue = max([v for v in daily_sales.values() if v > 0]) if any(
+                v > 0 for v in daily_sales.values()) else 1
+
+            day_names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+            week_cells = []
+
+            for i in range(7):
+                day = start_of_week + timedelta(days=i)
+                day_str = day.strftime("%Y-%m-%d")
+                day_num = day.strftime("%d")
+                day_name = day_names[i]
+
+                day_sales_count = daily_counts.get(day_str, 0)
+                day_revenue = daily_sales.get(day_str, 0)
+
+                if day_revenue == 0:
+                    bg_color = "#ebedf0"
+                    intensity = 0
+                else:
+                    intensity = day_revenue / max_revenue if max_revenue > 0 else 0
+                    if intensity < 0.25:
+                        bg_color = "#c6e48b"
+                    elif intensity < 0.5:
+                        bg_color = "#7bc96f"
+                    elif intensity < 0.75:
+                        bg_color = "#239a3b"
+                    else:
+                        bg_color = "#196127"
+
+                week_cells.append(
+                    ft.Container(
+                        width=50,
+                        height=50,
+                        bgcolor=bg_color,
+                        border_radius=5,
+                        alignment=ft.Alignment.CENTER,
+                        tooltip=f"{day_name}, {day_num} - ${day_revenue:.2f} ({day_sales_count} sales)",
+                        content=ft.Text(
+                            day_num,
+                            size=12,
+                            weight=ft.FontWeight.BOLD,
+                            color="white" if intensity > 0.5 else "black",
+                        ),
+                    )
+                )
+
+            dashboard_content = ft.Column(
+                scroll=ft.ScrollMode.AUTO,
+                controls=[
+                    ft.Text("Dashboard", size=30, weight=ft.FontWeight.BOLD),
+                    ft.Row(
+                        controls=[
+                            ft.Container(
+                                expand=True,
+                                padding=20,
+                                bgcolor=ft.Colors.GREEN_700,
+                                border_radius=15,
+                                content=ft.Column(
+                                    controls=[
+                                        ft.Text("Revenue", color="white"),
+                                        ft.Text(f"${total_revenue:.2f}", size=28, color="white",
+                                                weight=ft.FontWeight.BOLD),
+                                    ]
+                                ),
+                            ),
+                            ft.Container(
+                                expand=True,
+                                padding=20,
+                                bgcolor=ft.Colors.BLUE_700,
+                                border_radius=15,
+                                content=ft.Column(
+                                    controls=[
+                                        ft.Text("Products", color="white"),
+                                        ft.Text(str(total_products), size=28, color="white", weight=ft.FontWeight.BOLD),
+                                    ]
+                                ),
+                            ),
+                            ft.Container(
+                                expand=True,
+                                padding=20,
+                                bgcolor=ft.Colors.ORANGE_700,
+                                border_radius=15,
+                                content=ft.Column(
+                                    controls=[
+                                        ft.Text("Stock", color="white"),
+                                        ft.Text(str(total_stock), size=28, color="white", weight=ft.FontWeight.BOLD),
+                                    ]
+                                ),
+                            ),
+                        ]
+                    ),
+                    ft.Divider(),
+                    ft.Text("Weekly Sales Heatmap", size=22, weight=ft.FontWeight.BOLD),
+                    ft.Container(
+                        padding=20,
+                        bgcolor=ft.Colors.WHITE,
+                        border_radius=10,
+                        border=ft.Border.all(1, ft.Colors.BLUE_GREY_100),
+                        content=ft.Column(
+                            controls=[
+                                ft.Row(
+                                    controls=[ft.Text(day_names[i], size=10, weight=ft.FontWeight.BOLD) for i in
+                                              range(7)],
+                                    spacing=5,
+                                    alignment=ft.MainAxisAlignment.CENTER,
+                                ),
+                                ft.Row(
+                                    controls=week_cells,
+                                    spacing=5,
+                                    alignment=ft.MainAxisAlignment.CENTER,
+                                ),
+                                ft.Container(height=10),
+                                ft.Row(
+                                    controls=[
+                                        ft.Text("Less", size=9),
+                                        ft.Container(width=10, height=10, bgcolor="#ebedf0", border_radius=2),
+                                        ft.Container(width=10, height=10, bgcolor="#c6e48b", border_radius=2),
+                                        ft.Container(width=10, height=10, bgcolor="#7bc96f", border_radius=2),
+                                        ft.Container(width=10, height=10, bgcolor="#239a3b", border_radius=2),
+                                        ft.Container(width=10, height=10, bgcolor="#196127", border_radius=2),
+                                        ft.Text("More", size=9),
+                                    ],
+                                    spacing=5,
+                                ),
+                            ],
+                            spacing=10,
+                        ),
+                    ),
+                    ft.Divider(),
+                    ft.Text("Recent Sales", size=22, weight=ft.FontWeight.BOLD),
+                    ft.DataTable(
+                        columns=[
+                            ft.DataColumn(ft.Text("Product")),
+                            ft.DataColumn(ft.Text("Quantity")),
+                            ft.DataColumn(ft.Text("Total")),
+                        ],
+                        rows=sales_rows,
+                    ),
+                ]
+            )
+            content_area.controls = [dashboard_content]
+            page.update()
+
+        # INVENTORY
+        def show_inventory():
+            selected_image = ""
+
+            name_input = ft.TextField(label="Product Name", width=220)
+            price_input = ft.TextField(label="Price", width=120, keyboard_type=ft.KeyboardType.NUMBER)
+            stock_input = ft.TextField(label="Stock", width=120, keyboard_type=ft.KeyboardType.NUMBER)
+            status = ft.Text()
+
+            # IMAGE PREVIEW
+            image_preview = ft.Container(
+                content=ft.Text("No Image Selected"),
+                width=120,
+                height=120,
+                bgcolor=ft.Colors.BLUE_GREY_100,
+                border_radius=10,
+                alignment=ft.Alignment.CENTER,
+            )
+
+            # Clear image function
+            def clear_image(_):
+                nonlocal selected_image
+                selected_image = ""
+                image_preview.content = ft.Text("No Image Selected")
+                status.value = "Image cleared"
+                status.color = "blue"
+                page.update()
+
+            # FILE PICKER (reads file directly, encodes to base64)
+            async def open_file_picker(_):
+                nonlocal selected_image
+                try:
+                    files = await file_picker.pick_files(
+                        allow_multiple=False,
+                        allowed_extensions=["png", "jpg", "jpeg"],
+                    )
+
+                    if files and len(files) > 0:
+                        raw_path = files[0].path
+
+                        if raw_path and os.path.exists(raw_path):
+                            with open(raw_path, "rb") as f:
+                                file_bytes = f.read()
+
+                            # Try to resize for performance, fallback to original encoding
+                            resized = resize_image_base64(file_bytes)
+                            if resized:
+                                selected_image = resized
+                            else:
+                                ext = raw_path.split(".")[-1].lower()
+                                mime = f"image/{ext}" if ext in ["png", "jpg", "jpeg"] else "image/png"
+                                selected_image = f"data:{mime};base64,{base64.b64encode(file_bytes).decode('utf-8')}"
+
+                        else:
+                            status.value = "Cannot access the file. Choose a local file."
+                            status.color = "red"
+                            page.update()
+                            return
+
+                        image_preview.content = ft.Image(
+                            src=selected_image,
+                            width=120,
+                            height=120,
+                            fit=ft.BoxFit.COVER,
+                            error_content=ft.Icon(ft.Icons.BROKEN_IMAGE, size=50, color="red"),
+                        )
+                        status.value = "Image selected!"
+                        status.color = "green"
+                    else:
+                        status.value = "Cancelled!"
+                        status.color = "red"
+                except Exception as ex:
+                    status.value = f"Error: {str(ex)}"
+                    status.color = "red"
+                page.update()
+
+            # ADD PRODUCT
+            def add_product(_):
+                try:
+                    if not name_input.value or not price_input.value or not stock_input.value:
+                        status.value = "Fill all fields"
+                        status.color = "red"
+                    elif not selected_image:
+                        status.value = "Please select an image"
+                        status.color = "red"
+                    else:
+                        inventory.append(
+                            {
+                                "name": name_input.value,
+                                "price": float(price_input.value),
+                                "stock": int(stock_input.value),
+                                "image": selected_image,
+                            }
+                        )
+                        status.value = "Product added successfully"
+                        status.color = "green"
+
+                        # Clear inputs
+                        name_input.value = ""
+                        price_input.value = ""
+                        stock_input.value = ""
+                        image_preview.content = ft.Text("No Image Selected")
+                        show_inventory()
+                except Exception as ex:
+                    status.value = f"Error: {str(ex)}"
+                    status.color = "red"
+                page.update()
+
+            # INVENTORY DISPLAY – FIXED: expand=True prevents sidebar from collapsing
+            product_cards = []
+            for idx, item in enumerate(inventory):
+                index = idx
+
+                def delete_product(i):
+                    def on_delete(_):
+                        inventory.pop(i)
+                        status.value = "Product deleted successfully"
+                        status.color = "green"
+                        show_inventory()
+                        page.update()
+
+                    return on_delete
+
+                product_cards.append(
+                    ft.Container(
+                        width=220,
+                        padding=15,
+                        bgcolor=ft.Colors.WHITE,
+                        border_radius=15,
+                        border=ft.Border.all(1, ft.Colors.BLUE_GREY_100),
+                        content=ft.Column(
+                            controls=[
+                                ft.Image(
+                                    src=item["image"],
+                                    width=180,
+                                    height=120,
+                                    fit=ft.BoxFit.COVER,
+                                    error_content=ft.Icon(ft.Icons.INVENTORY_2, size=50, color=ft.Colors.GREY),
+                                ),
+                                ft.Text(item["name"], weight=ft.FontWeight.BOLD, size=16),
+                                ft.Row(
+                                    controls=[
+                                        ft.Text(f"${item['price']:.2f}", size=14),
+                                        ft.Text(f"Stock: {item['stock']}", size=14),
+                                    ],
+                                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                                ),
+                                ft.Container(height=5),
+                                ft.ElevatedButton(
+                                    "Delete",
+                                    icon=ft.Icons.DELETE,
+                                    color=ft.Colors.RED,
+                                    on_click=delete_product(index),
+                                ),
+                            ],
+                            spacing=8,
+                            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                        ),
+                    )
+                )
+
+            inventory_content = ft.Column(
+                scroll=ft.ScrollMode.AUTO,
+                controls=[
+                    ft.Text("Inventory Management", size=30, weight=ft.FontWeight.BOLD),
+                    ft.Row(controls=[name_input, price_input, stock_input]),
+                    image_preview,
+                    ft.Row(
+                        controls=[
+                            ft.ElevatedButton("Choose Image", icon=ft.Icons.IMAGE, on_click=open_file_picker),
+                            ft.ElevatedButton("Clear Image", icon=ft.Icons.CLEAR, on_click=clear_image),
+                            ft.ElevatedButton("Add Product", icon=ft.Icons.ADD, on_click=add_product),
+                        ]
+                    ),
+                    status,
+                    ft.Divider(),
+                    ft.Row(
+                        controls=product_cards,
+                        wrap=True,
+                        spacing=15,
+                        run_spacing=15,
+                        expand=True,  # ← THIS STOPS SIDEBAR SINKING
+                    ),
+                ]
+            )
+            content_area.controls = [inventory_content]
+            page.update()
+
+        # SALES WITH CHANGE CALCULATION
+        def show_sales():
+            status = ft.Text()
+            product_search = ft.TextField(
+                label=" Search Product",
+                width=300,
+                hint_text="Type product name...",
+            )
+            selected_product = ft.Text()
+            filtered_products = []
+
+            def on_search_change(e):
+                nonlocal filtered_products
+                search_text = product_search.value.lower()
+                filtered_products = [
+                    item for item in inventory
+                    if search_text in item["name"].lower() and item["stock"] > 0
+                ]
+                update_product_list()
+
+            product_search.on_change = on_search_change
+
+            qty_input = ft.TextField(label="Quantity", value="1", width=120, keyboard_type=ft.KeyboardType.NUMBER)
+
+            # NEW: Sales Calculation Fields
+            price_display = ft.Text("Price: $0.00", size=14, weight=ft.FontWeight.BOLD)
+            total_display = ft.Text("Total: $0.00", size=14, weight=ft.FontWeight.BOLD, color=ft.Colors.GREEN_700)
+            amount_paid_input = ft.TextField(label="Amount Paid ($)", width=120, keyboard_type=ft.KeyboardType.NUMBER)
+            change_display = ft.Text("Change: $0.00", size=14, weight=ft.FontWeight.BOLD, color=ft.Colors.BLUE_700)
+
+            product_buttons_container = ft.Column(scroll=ft.ScrollMode.AUTO, height=150)
+
+            def update_calculations(_=None):
+                """Calculate price, total, and change"""
+                try:
+                    qty = int(qty_input.value) if qty_input.value else 1
+                    item = next((i for i in inventory if i["name"] == selected_product.value), None)
+
+                    if item and qty > 0:
+                        item_price = item["price"]
+                        total = item_price * qty
+                        price_display.value = f"Price: ${item_price:.2f}"
+                        total_display.value = f"Total: ${total:.2f}"
+
+                        # Calculate change
+                        if amount_paid_input.value:
+                            try:
+                                paid = float(amount_paid_input.value)
+                                change = paid - total
+                                change_display.value = f"Change: ${change:.2f}"
+                                change_display.color = ft.Colors.GREEN_700 if change >= 0 else ft.Colors.RED_700
+                            except ValueError:
+                                change_display.value = "Change: $0.00"
+                        else:
+                            change_display.value = "Change: $0.00"
+                    else:
+                        price_display.value = "Price: $0.00"
+                        total_display.value = "Total: $0.00"
+                        change_display.value = "Change: $0.00"
+                except ValueError:
+                    pass
+                page.update()
+
+            qty_input.on_change = update_calculations
+            amount_paid_input.on_change = update_calculations
+
+            def update_product_list():
+                product_buttons = []
+                for product_item in filtered_products:
+                    def make_click_handler(item):
+                        def on_click(_):
+                            selected_product.value = item["name"]
+                            product_search.value = item["name"]
+                            update_calculations()  # UPDATED: Calculate when product is selected
+                            page.update()
+
+                        return on_click
+
+                    product_buttons.append(
+                        ft.Container(
+                            content=ft.Row(
+                                controls=[
+                                    ft.Image(
+                                        src=product_item["image"],
+                                        width=40,
+                                        height=40,
+                                        fit=ft.BoxFit.COVER,
+                                        error_content=ft.Text("No img"),
+                                    ),
+                                    ft.Column(
+                                        expand=True,
+                                        controls=[
+                                            ft.Text(product_item["name"], weight=ft.FontWeight.BOLD),
+                                            ft.Text(f"${product_item['price']:.2f} | Stock: {product_item['stock']}",
+                                                    size=10),
+                                        ],
+                                    ),
+                                ],
+                                spacing=10,
+                            ),
+                            padding=10,
+                            bgcolor=ft.Colors.BLUE_50,
+                            border_radius=8,
+                            on_click=make_click_handler(product_item),
+                        )
+                    )
+                product_buttons_container.controls = product_buttons
+                page.update()
+
+            def process_sale(_):
+                try:
+                    selected = selected_product.value
+                    if not selected:
+                        status.value = "Please select a product"
+                        status.color = "red"
+                        page.update()
+                        return
+                    qty = int(qty_input.value)
+                    item = next(i for i in inventory if i["name"] == selected)
+                    if item["stock"] >= qty:
+                        item["stock"] -= qty
+                        total = item["price"] * qty
+                        sales_history.append(
+                            {
+                                "name": selected,
+                                "quantity": qty,
+                                "total": total,
+                                "date": datetime.now().strftime("%Y-%m-%d"),
+                            }
+                        )
+                        # UPDATED: Show change in status message
+                        change_msg = ""
+                        if amount_paid_input.value:
+                            paid = float(amount_paid_input.value)
+                            change = paid - total
+                            change_msg = f" | Change: ${change:.2f}"
+
+                        status.value = f"Sold {qty} x {selected} | Total: ${total:.2f}{change_msg}"
+                        status.color = "green"
+                        product_search.value = ""
+                        selected_product.value = ""
+                        qty_input.value = "1"
+                        amount_paid_input.value = ""
+                        show_sales()
+                    else:
+                        status.value = "Not enough stock"
+                        status.color = "red"
+                except Exception as ex:
+                    status.value = f"Error: {str(ex)}"
+                    status.color = "red"
+                page.update()
+
+            product_cards = []
+            for item in inventory:
+                product_cards.append(
+                    ft.Container(
+                        width=180,
+                        padding=10,
+                        bgcolor="white",
+                        border_radius=15,
+                        border=ft.Border.all(1, ft.Colors.BLUE_GREY_100),
+                        content=ft.Column(
+                            controls=[
+                                ft.Image(
+                                    src=item["image"],
+                                    width=150,
+                                    height=120,
+                                    fit=ft.BoxFit.COVER,
+                                    error_content=ft.Text("No img"),
+                                ),
+                                ft.Text(item["name"], weight=ft.FontWeight.BOLD),
+                                ft.Text(f"${item['price']:.2f}"),
+                                ft.Text(f"Stock: {item['stock']}"),
+                            ]
+                        ),
+                    )
+                )
+
+            sales_content = ft.Column(
+                scroll=ft.ScrollMode.AUTO,
+                controls=[
+                    ft.Text("Sales", size=30, weight=ft.FontWeight.BOLD),
+                    ft.Row(controls=[product_search, qty_input, amount_paid_input], spacing=10),
+                    ft.Container(
+                        content=product_buttons_container,
+                        border=ft.Border.all(1, ft.Colors.BLUE_GREY_200),
+                        border_radius=8,
+                        padding=10,
+                    ),
+                    ft.Text(f"Selected: {selected_product.value}", size=12, color=ft.Colors.BLUE_700,
+                            weight=ft.FontWeight.BOLD),
+                    price_display,
+                    total_display,
+                    change_display,
+                    ft.ElevatedButton("Complete Sale", icon=ft.Icons.SHOPPING_CART, on_click=process_sale),
+                    status,
+                    ft.Divider(),
+                    ft.Text("All Products", size=22, weight=ft.FontWeight.BOLD),
+                    ft.Row(controls=product_cards, wrap=True),
+                ]
+            )
+            content_area.controls = [sales_content]
+            page.update()
+
+        # NAVIGATION
+        def nav_change(e):
+            index = e.control.selected_index
+            if index == 0:
+                show_dashboard()
+            elif index == 1:
+                show_inventory()
+            elif index == 2:
+                show_sales()
+            elif index == 3:
+                view_login(None)
+
+        sidebar = ft.NavigationRail(
+            selected_index=0,
+            bgcolor=ft.Colors.BLUE_GREY_900,
+            label_type=ft.NavigationRailLabelType.ALL,
+            min_width=100,
+            on_change=nav_change,
+            destinations=[
+                ft.NavigationRailDestination(icon=ft.Icons.DASHBOARD, label=ft.Text("Dashboard", color="white")),
+                ft.NavigationRailDestination(icon=ft.Icons.INVENTORY, label=ft.Text("Inventory", color="white")),
+                ft.NavigationRailDestination(icon=ft.Icons.PAYMENTS, label=ft.Text("Sales", color="white")),
+                ft.NavigationRailDestination(icon=ft.Icons.LOGOUT, label=ft.Text("Logout", color="white")),
+            ],
+        )
+
+        # FIXED SIDEBAR: Changed height from 700 to dynamic page.window_height
+        page.add(
+            ft.Row(
+                controls=[
+                    ft.Container(content=sidebar, height=page.window_height, expand=False),
+                    ft.VerticalDivider(width=1),
+                    ft.Container(content=content_area, expand=True, padding=20),
+                ],
+                expand=True,
+            )
+        )
+        show_dashboard()
+
+    # LOGIN
+    def view_login(_):
+        page.clean()
+        email = ft.TextField(label="Email", width=300)
+        password = ft.TextField(label="Password", width=300, password=True, can_reveal_password=True)
+        status = ft.Text()
+
+        def login(_):
+            if email.value in registered_users and registered_users[email.value] == password.value:
+                view_main(None)
+            else:
+                status.value = "Invalid credentials"
+                status.color = "red"
+            page.update()
+
+        page.add(
+            ft.Container(
+                content=create_card(
+                    [
+                        ft.Text("POS LOGIN", size=30, weight=ft.FontWeight.BOLD),
+                        email,
+                        password,
+                        status,
+                        ft.ElevatedButton("LOGIN", width=300, on_click=login),
+                        ft.TextButton("Create Account", on_click=view_register),
+                    ]
+                ),
+                expand=True,
+                alignment=ft.Alignment.CENTER,
+            )
+        )
+
+    # REGISTER
+    def view_register(_):
+        page.clean()
+        email = ft.TextField(label="Email", width=300)
+        password1 = ft.TextField(label="Password", width=300, password=True)
+        password2 = ft.TextField(label="Confirm Password", width=300, password=True)
+        status = ft.Text()
+
+        def register(_):
+            if not email.value or not password1.value:
+                status.value = "Fields cannot be empty"
+                status.color = "red"
+            elif email.value in registered_users:
+                status.value = "Email already exists"
+                status.color = "orange"
+            elif password1.value != password2.value:
+                status.value = "Passwords do not match"
+                status.color = "red"
+            else:
+                registered_users[email.value] = password1.value
+                status.value = "Registration successful"
+                status.color = "green"
+            page.update()
+
+        page.add(
+            ft.Container(
+                content=create_card(
+                    [
+                        ft.Text("REGISTER", size=30, weight=ft.FontWeight.BOLD),
+                        email,
+                        password1,
+                        password2,
+                        status,
+                        ft.ElevatedButton("REGISTER", width=300, on_click=register),
+                        ft.TextButton("Back to Login", on_click=view_login),
+                    ]
+                ),
+                expand=True,
+                alignment=ft.Alignment.CENTER,
+            )
+        )
+
+    # START APP
+    view_login(None)
+
+
+ft.app(target=main)
